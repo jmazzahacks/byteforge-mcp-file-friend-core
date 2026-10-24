@@ -138,7 +138,14 @@ class Database:
                     except Exception:  # noqa: BLE001 -- preserve the operation's failure
                         logger.error("Database cursor cleanup failed")
         except psycopg2.Error as error:
-            if isinstance(error, (psycopg2.OperationalError, psycopg2.InterfaceError)) or error.pgcode == "58000":
+            message = error.diag.message_primary or str(error)
+            pool_unavailable = error.pgcode == "58000" and (
+                message.startswith("could not get connection from the pool") or message == "AllServersDown"
+            )
+            connection_error = error.pgcode != "58000" and isinstance(
+                error, (psycopg2.OperationalError, psycopg2.InterfaceError)
+            )
+            if connection_error or pool_unavailable:
                 # PgCat pool checkout failure is retryable by the caller/reconciler.
                 # Never replay the context body: an earlier write may have committed.
                 raise DatabaseUnavailable("Database operation unavailable") from error

@@ -211,3 +211,14 @@ def test_hashing_and_tusd_callbacks_hold_no_database_transaction(tmp_path):
     store.request_delete(record["id"])
     store.drain_delete(record["id"], terminate)
     assert observed == ["verifying", "hashed", "terminate"]
+
+
+@pytest.mark.parametrize("message,expected", [
+    ("could not get connection from the pool: AllServersDown", DatabaseUnavailable),
+    ("unrelated database system failure", psycopg2.DatabaseError),
+])
+def test_real_sqlstate_diagnostics_classify_only_pgcat_pool_errors(tmp_path, message, expected):
+    store, _ = upload(tmp_path)
+    with pytest.raises(expected), store.repository.database.cursor() as cursor:
+        cursor.execute("DO $$ BEGIN RAISE EXCEPTION USING ERRCODE='58000', MESSAGE=%s; END $$", (message,))
+    assert store.repository.database.healthy()

@@ -79,6 +79,9 @@ def test_preping_cleanup_cannot_swallow_shutdown_signal():
 
 
 class PgcatUnavailable(psycopg2.DatabaseError):
+    def __init__(self, message="could not get connection from the pool: AllServersDown"):
+        super().__init__(message)
+
     @property
     def pgcode(self):
         return "58000"
@@ -146,3 +149,13 @@ def test_nontransient_database_errors_are_not_reclassified():
     db.schema = "public"
     with pytest.raises(psycopg2.IntegrityError), db.cursor():
         raise psycopg2.IntegrityError()
+
+
+def test_unrelated_system_error_is_not_classified_as_pgcat_capacity():
+    conn = connection()
+    db = database(conn)
+    db.schema = "public"
+    error = PgcatUnavailable("unrelated database system failure")
+    with pytest.raises(PgcatUnavailable) as caught, db.cursor():
+        raise error
+    assert caught.value is error
