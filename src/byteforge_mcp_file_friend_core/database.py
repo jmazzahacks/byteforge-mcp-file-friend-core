@@ -33,7 +33,6 @@ def connection_options() -> dict:
         "keepalives_idle": 30,
         "keepalives_interval": 10,
         "keepalives_count": 5,
-        "options": "-c statement_timeout=5000 -c lock_timeout=2000 -c idle_in_transaction_session_timeout=10000",
     }
 
 
@@ -110,7 +109,13 @@ class Database:
                 self.putback(pool, conn, close=discard or bool(conn.closed))
             raise
         else:
-            self.putback(pool, conn, close=bool(conn.closed))
+            # End even a raw connection user's transaction before returning the slot.
+            discard = True
+            try:
+                conn.rollback()
+                discard = bool(conn.closed)
+            finally:
+                self.putback(pool, conn, close=discard or bool(conn.closed))
 
     @contextmanager
     def cursor(self):
@@ -121,6 +126,10 @@ class Database:
                     cursor.execute(
                         sql.SQL("SET LOCAL search_path TO {}, pg_catalog").format(sql.Identifier(self.schema))
                     )
+                    # PgCat drops startup options; use transaction-local query limits.
+                    # Athena supplies role-level idle_in_transaction_session_timeout.
+                    cursor.execute("SET LOCAL statement_timeout = '5s'")
+                    cursor.execute("SET LOCAL lock_timeout = '2s'")
                     yield cursor
                     conn.commit()  # Lost acknowledgement: reconcile, never replay here.
                 finally:
@@ -128,8 +137,12 @@ class Database:
                         cursor.close()
                     except Exception:  # noqa: BLE001 -- preserve the operation's failure
                         logger.error("Database cursor cleanup failed")
-        except (psycopg2.OperationalError, psycopg2.InterfaceError) as error:
-            raise DatabaseUnavailable("Database operation unavailable") from error
+        except psycopg2.Error as error:
+            if isinstance(error, (psycopg2.OperationalError, psycopg2.InterfaceError)) or error.pgcode == "58000":
+                # PgCat pool checkout failure is retryable by the caller/reconciler.
+                # Never replay the context body: an earlier write may have committed.
+                raise DatabaseUnavailable("Database operation unavailable") from error
+            raise
 
     def healthy(self) -> bool:
         try:

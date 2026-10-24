@@ -32,3 +32,11 @@ Tests run against installed wheels. The local runner creates and removes a dispo
 Core behavior is unchanged; imports and the worker entry point use the independent package names. The legacy workspace implementation remains intact until consumer migration. CLI command `ff-worker`, `FF_*` configuration and lifecycle contracts are preserved.
 
 MIT licensed; see `LICENSE`. Public repository: https://github.com/jmazzahacks/byteforge-mcp-file-friend-core.
+
+## PgCat transaction-pooling contract
+
+Client startup `options` are deliberately omitted: Athena's PgCat drops them. Athena must provision role defaults of `statement_timeout=5s`, `lock_timeout=2s` and `idle_in_transaction_session_timeout=10s`. Each application transaction additionally applies `SET LOCAL statement_timeout` and `lock_timeout`; this does not replace the idle role default. The local PostgreSQL runner sets the same role defaults.
+
+Pre-ping rolls back before yielding a connection. Success and exception cleanup return or discard the slot and end the transaction. No hashing or tusd RPC occurs inside a database transaction. SQLSTATE `58000` is surfaced as `DatabaseUnavailable`, as are connection-loss errors; backend translates this to HTTP 503 with Retry-After. Pre-ping/checkout retries are bounded to three attempts before application work. Once a transaction body begins, it is never replayed automatically, including on lost commit acknowledgement. Callers may retry reads and proven-unexecuted writes; ambiguous mutations must reconcile durable state first. Workers retry by reconciling on a later pass. Capacity rejection remains distinct from database unavailability.
+
+Terminal states `deleted`, `expired` and `failed` require `deleted_at`; `deleting` intentionally does not, because it represents cleanup still in progress. Tests cover the schema constraint, idle connections at hash/tusd boundaries and injected PgCat errors. Local tests use direct PostgreSQL and injected SQLSTATE failures, not Athena's live PgCat; routing/defaults must still be smoke-tested by Athena after separately authorized provisioning.

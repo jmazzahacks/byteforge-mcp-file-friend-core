@@ -18,6 +18,9 @@ export FF_TEST_PG_CTL="$pg_bin/pg_ctl" FF_TEST_PG_DATA="$pg_tmp/db"
 unset FF_DB_SCHEMA
 "$pg_bin/psql" -h 127.0.0.1 -p "$pg_port" -U "$(id -un)" -d postgres -v ON_ERROR_STOP=1 <<'SQL'
 CREATE ROLE byteforge_file_friend LOGIN;
+ALTER ROLE byteforge_file_friend SET statement_timeout = '5s';
+ALTER ROLE byteforge_file_friend SET lock_timeout = '2s';
+ALTER ROLE byteforge_file_friend SET idle_in_transaction_session_timeout = '10s';
 CREATE DATABASE ff_test OWNER byteforge_file_friend;
 SQL
 bin/python -m pytest "$@"

@@ -15,7 +15,8 @@ CREATE TABLE IF NOT EXISTS uploads (
     error TEXT,
     version BIGINT NOT NULL DEFAULT 1 CHECK (version > 0),
     CHECK (state <> 'ready' OR (ready_at IS NOT NULL AND expires_at IS NOT NULL)),
-    CHECK (state <> 'deleting' OR terminal IS NOT NULL)
+    CHECK (state <> 'deleting' OR terminal IS NOT NULL),
+    CHECK (state NOT IN ('deleted','expired','failed') OR deleted_at IS NOT NULL)
 );
 CREATE INDEX IF NOT EXISTS uploads_pending ON uploads (state, created_at)
     WHERE state IN ('uploading','verifying','publishing','deleting');

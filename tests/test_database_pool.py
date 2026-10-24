@@ -76,3 +76,73 @@ def test_preping_cleanup_cannot_swallow_shutdown_signal():
     with pytest.raises(KeyboardInterrupt), db.connection():
         pass
     db.pool.putconn.assert_called_once_with(conn, close=True)
+
+
+class PgcatUnavailable(psycopg2.DatabaseError):
+    @property
+    def pgcode(self):
+        return "58000"
+
+
+def test_startup_options_are_not_sent(monkeypatch):
+    from byteforge_mcp_file_friend_core.database import connection_options
+
+    monkeypatch.setenv("FF_DB_PASSWORD", "test")
+    monkeypatch.setenv("FF_DB_SSLMODE", "disable")
+    options = connection_options()
+    assert "options" not in options
+    assert options["sslmode"] == "disable"
+
+
+def test_preping_ends_transaction_before_yield_and_success_returns_idle():
+    conn = connection()
+    db = database(conn)
+    with db.connection():
+        assert conn.rollback.call_count == 1
+    assert conn.rollback.call_count == 2
+    db.pool.putconn.assert_called_once_with(conn, close=False)
+
+
+@pytest.mark.parametrize("error", [RuntimeError, KeyboardInterrupt])
+def test_success_cleanup_failure_returns_discarded_slot(error):
+    conn = connection()
+    db = database(conn)
+    with pytest.raises(error), db.connection():
+        conn.rollback.side_effect = error()
+    db.pool.putconn.assert_called_once_with(conn, close=True)
+
+
+def test_pgcat_checkout_failure_retries_before_application_work():
+    dead, live = connection(), connection()
+    dead.cursor.return_value.execute.side_effect = PgcatUnavailable()
+    db = database(dead, live)
+    with db.connection() as conn:
+        assert conn is live
+    assert db.pool.getconn.call_count == 2
+    assert db.pool.putconn.call_args_list[0].kwargs["close"] is True
+
+
+@pytest.mark.parametrize("phase", ["read", "write", "commit"])
+def test_pgcat_failure_is_retryable_but_never_replays_body(phase):
+    conn = connection()
+    db = database(conn)
+    db.schema = "public"
+    calls = 0
+    with pytest.raises(DatabaseUnavailable), db.cursor() as cursor:
+        calls += 1
+        if phase == "commit":
+            conn.commit.side_effect = PgcatUnavailable()
+        else:
+            cursor.execute.side_effect = PgcatUnavailable()
+            cursor.execute("SELECT 1" if phase == "read" else "UPDATE uploads SET version=version+1")
+    assert calls == 1
+    assert db.pool.getconn.call_count == 1
+    db.pool.putconn.assert_called_once_with(conn, close=False)
+
+
+def test_nontransient_database_errors_are_not_reclassified():
+    conn = connection()
+    db = database(conn)
+    db.schema = "public"
+    with pytest.raises(psycopg2.IntegrityError), db.cursor():
+        raise psycopg2.IntegrityError()

@@ -166,3 +166,48 @@ sys.exit(1)
     )
     assert result.returncode == 0
     assert store.read(record["id"])["state"] == "uploading"
+
+
+@pytest.mark.parametrize("state", ["deleted", "expired", "failed"])
+def test_terminal_rows_require_cleanup_timestamp(tmp_path, state):
+    store, record = upload(tmp_path)
+    with pytest.raises(psycopg2.IntegrityError), store.repository.database.cursor() as cursor:
+        cursor.execute("UPDATE uploads SET state=%s, deleted_at=NULL WHERE id=%s", (state, record["id"]))
+    assert store.read(record["id"])["state"] == "uploading"
+
+
+def test_transaction_timeouts_and_idle_role_default(tmp_path):
+    store, _ = upload(tmp_path)
+    with store.repository.database.cursor() as cursor:
+        cursor.execute("SELECT current_setting('statement_timeout') AS statement, "
+                       "current_setting('lock_timeout') AS lock, "
+                       "current_setting('idle_in_transaction_session_timeout') AS idle")
+        assert dict(cursor.fetchone()) == {"statement": "5s", "lock": "2s", "idle": "10s"}
+
+
+def test_hashing_and_tusd_callbacks_hold_no_database_transaction(tmp_path):
+    from psycopg2.extensions import TRANSACTION_STATUS_IDLE
+
+    store, record = upload(tmp_path)
+    observed = []
+
+    def assert_idle():
+        pool = store.repository.database.pool
+        assert not pool._used
+        assert all(conn.get_transaction_status() == TRANSACTION_STATUS_IDLE for conn in pool._pool)
+
+    def fault(point):
+        if point in ("verifying", "hashed"):
+            assert_idle()
+            observed.append(point)
+
+    def terminate(file_id):
+        assert_idle()
+        observed.append("terminate")
+        store.source(file_id).unlink()
+
+    store.fault = fault
+    store.verify(record["id"])
+    store.request_delete(record["id"])
+    store.drain_delete(record["id"], terminate)
+    assert observed == ["verifying", "hashed", "terminate"]
