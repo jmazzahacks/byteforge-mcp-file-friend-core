@@ -10,7 +10,7 @@ readme = "README.md"
 requires-python = ">=3.13"
 authors = [{name = "Jason Byteforge"}]
 dependencies = [
-    "byteforge-mcp-file-friend-models @ git+https://github.com/jmazzahacks/byteforge-mcp-file-friend-models.git@7ffce069682e46c063a14f85d62126b215ba5087",
+    "byteforge-mcp-file-friend-models @ git+https://github.com/jmazzahacks/byteforge-mcp-file-friend-models.git@9c5d7054af80be19206d32dadd7975f4e421aa0d",
     "psycopg2-binary>=2.9,<3",
 ]
 license = "MIT"

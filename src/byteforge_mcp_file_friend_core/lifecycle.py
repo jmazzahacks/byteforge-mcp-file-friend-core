@@ -56,6 +56,8 @@ class Lifecycle:
         self.repository = UploadRepository()
         for name in ("uploads", "done", "locks"):
             (root / name).mkdir(parents=True, exist_ok=True)
+        # nginx mounts only this publication directory, under a different uid.
+        (root / "done").chmod(0o755)
 
     @contextmanager
     def named_lock(self, name: str, blocking: bool = True) -> Iterator[None]:
@@ -162,6 +164,10 @@ class Lifecycle:
             self.fault("publishing")
             destination = self.published(record)
             destination.parent.mkdir(exist_ok=True)
+            destination.parent.chmod(0o755)
+            # Hardlinks retain the source mode; make verified payloads readable
+            # independently of tusd or worker umask. The volume is trusted.
+            os.chmod(self.source(file_id), 0o644, follow_symlinks=False)
             sync_directory(destination.parent.parent)
             try:
                 os.link(self.source(file_id), destination, follow_symlinks=False)

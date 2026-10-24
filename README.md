@@ -13,7 +13,7 @@ The virtual environment lives at the repository root. Preserve `.gitignore` when
 ```bash
 source bin/activate
 uv pip install --require-hashes -r requirements.txt -r dev-requirements.txt -r build-requirements.txt
-uv pip install --no-build-isolation 'git+https://github.com/jmazzahacks/byteforge-mcp-file-friend-models.git@7ffce069682e46c063a14f85d62126b215ba5087'
+uv pip install --no-build-isolation 'git+https://github.com/jmazzahacks/byteforge-mcp-file-friend-models.git@9c5d7054af80be19206d32dadd7975f4e421aa0d'
 uv build --wheel --no-build-isolation
 uv pip install --no-deps dist/byteforge_mcp_file_friend_core-0.0.1-py3-none-any.whl
 python -m pytest tests/test_database_pool.py

@@ -16,7 +16,7 @@ def config(root: Path) -> FriendConfig:
     return FriendConfig(
         root,
         "https://ff.example",
-        hook_token="test",
+        hook_token="test-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
         min_free=0,
         reservation_ttl=2,
         incomplete_ttl=2,

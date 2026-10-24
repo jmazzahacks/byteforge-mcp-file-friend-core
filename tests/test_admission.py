@@ -149,3 +149,24 @@ def test_free_space_reserve_accounts_for_unwritten_bytes(tmp_path: Path) -> None
         assert store.reserve(METADATA, 0, 100, 40, 10)
         with pytest.raises(CapacityError):
             store.reserve(METADATA, 1, 100, 40, 10)
+
+
+def test_published_permissions_survive_restrictive_umask(tmp_path: Path) -> None:
+    import hashlib
+    import os
+    import stat
+
+    original = os.umask(0o077)
+    try:
+        store = Lifecycle(tmp_path, "https://example.invalid")
+        record = store.reserve({"filename": "a", "sha256": hashlib.sha256(b"abc").hexdigest()}, 3, 100, 0, 10)
+        store.source(record["id"]).write_bytes(b"abc")
+        assert stat.S_IMODE(store.source(record["id"]).stat().st_mode) == 0o600
+        store.verify(record["id"])
+        published = store.published(record)
+        assert stat.S_IMODE(published.stat().st_mode) == 0o644
+        assert stat.S_IMODE(published.parent.stat().st_mode) == 0o755
+        assert stat.S_IMODE((tmp_path / "done").stat().st_mode) == 0o755
+        assert published.stat().st_ino == store.source(record["id"]).stat().st_ino
+    finally:
+        os.umask(original)
