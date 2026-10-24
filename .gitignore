@@ -1,0 +1,25 @@
+# Root virtual environment and local configuration
+/bin/
+/lib/
+/lib64
+/include/
+/share/
+/pyvenv.cfg
+/.lock
+/CACHEDIR.TAG
+.env
+.env.*
+!.env.example
+.mcp.json
+.codex/
+.venv/
+# Python, tests and build output
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+build/
+dist/

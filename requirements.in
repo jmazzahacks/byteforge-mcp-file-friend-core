@@ -1,0 +1,2 @@
+# Third-party runtime dependencies; models uses the immutable Git revision in pyproject.toml.
+psycopg2-binary>=2.9,<3
