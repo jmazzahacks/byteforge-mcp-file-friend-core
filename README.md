@@ -31,4 +31,4 @@ Tests run against installed wheels. The local runner creates and removes a dispo
 
 Core behavior is unchanged; imports and the worker entry point use the independent package names. The legacy workspace implementation remains intact until consumer migration. CLI command `ff-worker`, `FF_*` configuration and lifecycle contracts are preserved.
 
-MIT licensed; see `LICENSE`. Public GitHub owner `jmazzahacks` is approved. This checkpoint is local; no core remote has been created.
+MIT licensed; see `LICENSE`. Public repository: https://github.com/jmazzahacks/byteforge-mcp-file-friend-core.
