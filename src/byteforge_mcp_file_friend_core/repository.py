@@ -50,6 +50,14 @@ class UploadRepository:
         cursor.execute(query + " ORDER BY id")
         return [row["id"] for row in cursor.fetchall()]
 
+    def capacity_records(self, cursor):
+        # One snapshot includes ready files; terminal rows retain no reservation.
+        cursor.execute(
+            "SELECT id, size, state FROM uploads "
+            "WHERE state IN ('uploading','verifying','publishing','ready','deleting')"
+        )
+        return cursor.fetchall()
+
     def insert(self, record, cursor=None):
         if cursor is None:
             with self.database.cursor() as owned:

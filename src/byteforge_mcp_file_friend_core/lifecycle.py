@@ -307,7 +307,10 @@ class Lifecycle:
     def available_bytes(self) -> int:
         return shutil.disk_usage(self.root).free
 
-    def reserve(self, metadata: dict, size: int, max_size: int, min_free: int, max_active: int) -> dict:
+    def reserve(
+        self, metadata: dict, size: int, max_size: int, min_free: int, max_active: int,
+        storage_budget: int = 200 * 1024**3,
+    ) -> dict:
         values = validate_metadata(metadata, size)
         if size > max_size:
             raise ValueError("Upload exceeds maximum size")
@@ -315,8 +318,10 @@ class Lifecycle:
         with self.repository.admission() as cursor:
             active = 0
             remaining = 0
-            for file_id in self.repository.ids(active=True, cursor=cursor):
-                record = self.repository.read(file_id, cursor)
+            committed = 0
+            for record in self.repository.capacity_records(cursor):
+                file_id = record["id"]
+                committed += record["size"]
                 if record["state"] in ("uploading", "verifying", "publishing", "deleting"):
                     active += 1
                     try:
@@ -324,7 +329,11 @@ class Lifecycle:
                     except FileNotFoundError:
                         present = 0
                     remaining += max(0, record["size"] - present)
-            if active >= max_active or self.available_bytes() - remaining - size < min_free:
+            if (
+                active >= max_active
+                or committed + size > storage_budget
+                or self.available_bytes() - remaining - size < min_free
+            ):
                 raise CapacityError("Insufficient capacity for upload")
             return self.register(secrets.token_hex(16), values, size, cursor=cursor)
 

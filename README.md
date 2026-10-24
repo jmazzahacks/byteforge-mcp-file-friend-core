@@ -13,7 +13,7 @@ The virtual environment lives at the repository root. Preserve `.gitignore` when
 ```bash
 source bin/activate
 uv pip install --require-hashes -r requirements.txt -r dev-requirements.txt -r build-requirements.txt
-uv pip install --no-build-isolation 'git+https://github.com/jmazzahacks/byteforge-mcp-file-friend-models.git@1282a681a41cd144b21593ab0820a724b9a485a6'
+uv pip install --no-build-isolation 'git+https://github.com/jmazzahacks/byteforge-mcp-file-friend-models.git@eb56d7d595aaaab6ca195f5992a822e67bd1a054'
 uv build --wheel --no-build-isolation
 uv pip install --no-deps dist/byteforge_mcp_file_friend_core-0.0.1-py3-none-any.whl
 python -m pytest tests/test_database_pool.py
@@ -40,3 +40,9 @@ Client startup `options` are deliberately omitted: Athena's PgCat drops them. At
 Pre-ping rolls back before yielding a connection. Success and exception cleanup return or discard the slot and end the transaction. No hashing or tusd RPC occurs inside a database transaction. SQLSTATE `58000` with PgCat's pool-checkout/AllServersDown diagnostic is surfaced as `DatabaseUnavailable`, as are connection-loss errors; backend translates this to HTTP 503 with Retry-After. Pre-ping/checkout retries are bounded to three attempts before application work. Once a transaction body begins, it is never replayed automatically, including on lost commit acknowledgement. Callers may retry reads and proven-unexecuted writes; ambiguous mutations must reconcile durable state first. Workers retry by reconciling on a later pass. Capacity rejection remains distinct from database unavailability.
 
 Terminal states `deleted`, `expired` and `failed` require `deleted_at`; `deleting` intentionally does not, because it represents cleanup still in progress. Tests cover the schema constraint, idle connections at hash/tusd boundaries and injected PgCat errors. Local tests use direct PostgreSQL and injected SQLSTATE failures, not Athena's live PgCat; routing/defaults must still be smoke-tested by Athena after separately authorized provisioning.
+
+Admission also enforces `storage_budget` (default 200 GiB). It counts declared
+sizes for all nonterminal uploads, including ready files and pending deletion,
+under the same transaction advisory lock as disk reservations. The independent
+free-space check subtracts unwritten reservations; published hardlinks count once.
+The budget limits payload commitments, not filesystem metadata or other services.
