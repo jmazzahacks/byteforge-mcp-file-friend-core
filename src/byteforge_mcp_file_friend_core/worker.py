@@ -41,7 +41,18 @@ def run_child(config: FriendConfig, task: Callable[[FriendConfig], None]) -> Non
         os._exit(70)  # Abrupt parent death: release all local locks and database sockets.
 
     threading.Thread(target=watch_parent, daemon=True).start()
-    task(config)
+    from byteforge_loki_logging import flush_logging
+
+    from byteforge_mcp_file_friend_core.observability import configure_service_logging, event
+
+    configure_service_logging("file-friend-worker")
+    try:
+        task(config)
+    except Exception:  # noqa: BLE001 -- do not let multiprocessing print sensitive traceback data.
+        event("worker_pass_failed")
+        raise SystemExit(1) from None
+    finally:
+        flush_logging(timeout=2)
 
 
 def healthy(root: Path, max_age: float = 15) -> bool:
@@ -64,6 +75,7 @@ class Supervisor:
         self.stop = threading.Event()
         self.failures = 0
         self.last_success = None
+        self.metrics = None
 
     def heartbeat(self, child_pid: int | None = None, state: str = "running") -> None:
         payload = {
@@ -125,6 +137,12 @@ class Supervisor:
                         self.last_success = time.time()
                     else:
                         logger.error("Worker pass failed or timed out; retry %d", self.failures)
+                    if self.metrics:
+                        counter, duration = self.metrics
+                        counter.labels("success" if success else "failure").inc()
+                        duration.observe(time.monotonic() - started)
+                    from byteforge_mcp_file_friend_core.observability import event
+                    event("worker_pass_completed" if success else "worker_pass_failed", failures=self.failures)
                     self.heartbeat()
                     if once:
                         return 0 if success else 1
@@ -156,8 +174,24 @@ def main() -> None:
     config.validate()
     if not math.isfinite(args.interval) or args.interval <= 0:
         parser.error("--interval must be positive")
-    logging.basicConfig(level=logging.INFO)
+    from byteforge_mcp_file_friend_core.observability import configure_service_logging
+    configure_service_logging("file-friend-worker")
     supervisor = Supervisor(config, args.interval)
+    metrics_server = None
+    port = int(os.environ.get("FF_WORKER_METRICS_PORT", "0"))
+    if port:
+        from prometheus_client import CollectorRegistry, Counter, Histogram, start_http_server
+
+        from byteforge_mcp_file_friend_core.observability import LifecycleCollector
+        if "PROMETHEUS_MULTIPROC_DIR" in os.environ:
+            raise ValueError("Worker metrics must not use the API multiprocess directory")
+        registry = CollectorRegistry()
+        registry.register(LifecycleCollector(config))
+        supervisor.metrics = (
+            Counter("ff_worker_passes_total", "Completed worker passes", ["result"], registry=registry),
+            Histogram("ff_worker_pass_duration_seconds", "Worker pass duration", registry=registry),
+        )
+        metrics_server, _ = start_http_server(port, addr=os.environ.get("FF_WORKER_METRICS_HOST", "127.0.0.1"), registry=registry)
 
     def stop(signum: int, frame: object) -> None:
         supervisor.stop.set()
@@ -168,6 +202,10 @@ def main() -> None:
         raise SystemExit(supervisor.run(args.once))
     except BlockingIOError:
         parser.exit(1, "A worker supervisor already owns this storage directory\n")
+    finally:
+        if metrics_server:
+            metrics_server.shutdown()
+            metrics_server.server_close()
 
 
 if __name__ == "__main__":

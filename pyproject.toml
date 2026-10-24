@@ -10,6 +10,9 @@ readme = "README.md"
 requires-python = ">=3.13"
 authors = [{name = "Jason Byteforge"}]
 dependencies = [
+    "byteforge-loki-logging @ git+https://github.com/jmazzahacks/byteforge-loki-logging.git@3df22201209c5ccfd3800ec8e7e5fc26d4784d44",
+    "python-logging-loki @ git+https://github.com/waylayio/python-logging-loki.git@2b34c1ee2be8fd220191a184a4929af646df52ae",
+    "prometheus-client>=0.23,<1",
     "byteforge-mcp-file-friend-models @ git+https://github.com/jmazzahacks/byteforge-mcp-file-friend-models.git@9c5d7054af80be19206d32dadd7975f4e421aa0d",
     "psycopg2-binary>=2.9,<3",
 ]

@@ -46,3 +46,9 @@ sizes for all nonterminal uploads, including ready files and pending deletion,
 under the same transaction advisory lock as disk reservations. The independent
 free-space check subtracts unwritten reservations; published hardlinks count once.
 The budget limits payload commitments, not filesystem metadata or other services.
+
+Worker observability uses ByteForge Loki logging and a single-process Prometheus
+endpoint enabled with FF_WORKER_METRICS_PORT (native bind defaults to loopback).
+Core still has no Flask dependency. Logging dependencies are immutable Git pins;
+third-party runtime and build inputs remain hash-locked. See backend
+`deploy/OBSERVABILITY.md` for the shared operations contract and safe logging rules.
