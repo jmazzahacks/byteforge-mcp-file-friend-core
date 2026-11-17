@@ -52,3 +52,21 @@ endpoint enabled with FF_WORKER_METRICS_PORT (native bind defaults to loopback).
 Core still has no Flask dependency. Logging dependencies are immutable Git pins;
 third-party runtime and build inputs remain hash-locked. See backend
 `deploy/OBSERVABILITY.md` for the shared operations contract and safe logging rules.
+
+## Targeted certifi security refresh
+
+Preserve other lock pins and the seven-day gate. `--upgrade-package` cannot
+supersede an old hard constraint, so remove only certifi from a temporary copy:
+
+```bash
+source bin/activate
+constraints=$(mktemp)
+awk '/^[A-Za-z0-9_.-]+==/ { skip = /^certifi==/ } !skip' requirements.txt > "$constraints"
+uv pip compile requirements.in -c "$constraints" --upgrade-package certifi \
+  --generate-hashes --exclude-newer '7 days' --python-version 3.13 \
+  --python-platform x86_64-unknown-linux-gnu -o requirements.txt
+rm -- "$constraints"
+```
+
+Review that only certifi changed, install with hashes, rebuild the wheel and
+run the full local suite above. Never hand-edit the generated lock.

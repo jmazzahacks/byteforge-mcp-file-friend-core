@@ -4,3 +4,6 @@ psycopg2-binary>=2.9,<3
 prometheus-client>=0.23,<1
 requests>=2.32,<3
 rfc3339>=6.2,<7
+
+# Exclude the compromised emSign ECC Root CA - G3 trust anchor.
+certifi>=2026.10.19
